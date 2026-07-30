@@ -19,15 +19,22 @@ def validate_pr_route(
     """Return validation errors for a proposed pull-request route."""
     error: str | None = None
     if base == "dev":
-        pass
+        route_is_valid = True
     elif base != "main":
+        route_is_valid = False
         error = f"pull requests must target dev or main, not {base!r}"
     elif not same_repository:
+        route_is_valid = False
         error = "promotion and release pull requests must originate in RAESystem/lilrae"
     elif head == "dev":
-        pass
+        route_is_valid = True
     elif head != RELEASE_PLEASE_BRANCH or author != RELEASE_PLEASE_AUTHOR:
+        route_is_valid = False
         error = "main accepts only dev promotion or the reviewed Release Please branch"
+    else:
+        route_is_valid = True
+    if route_is_valid:
+        return []
     return [error] if error else []
 
 
