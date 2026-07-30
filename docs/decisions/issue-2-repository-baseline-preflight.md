@@ -2,7 +2,7 @@
 
 Status: pre-implementation guidance
 
-Scope: repository and release baseline only
+Scope: repository, release, and migration-landing-zone baseline only
 
 ## Existing authorities and preflight state
 
@@ -23,6 +23,14 @@ has not been established by files in this checkout and must not be reported as
 satisfied without service-side evidence. Developer-local environment and tool
 connector files are not product configuration, identity authorities, or release
 inputs.
+
+The product direction was clarified before this baseline merged: LilRAE is the
+complete personal/local backend generalized and migrated from
+`Brad-Edwards/aptl`, while BigRAE is the organizational/SaaS backend migrated
+from Shifter. APTL's TechVault packs, plugins, scenario MCPs, and research
+apparatus remain an advanced experience on LilRAE rather than becoming backend
+core. Issue 2 still adds no execution behavior; it establishes the
+Python-3.11-compatible landing zone for that history-preserving migration.
 
 ## Decisions
 
@@ -68,6 +76,8 @@ graph, not an ambient range upgrade. LilRAE does not import from a sibling
 checkout, a Git/path dependency, RAES's `implementations/python` tree, a private
 module path, the reference backend, backend stubs, or a concrete upstream
 backend.
+APTL is a migration source whose relevant history and implementation will move
+into this repository; it is not a path, VCS, build-time, or runtime dependency.
 
 RAES continues to own:
 
@@ -94,15 +104,15 @@ Issue 2 establishes engineering infrastructure, not execution. It adds no
 subprocess, container, VM, network listener, credential reader, environment
 binding, cache, database, control-plane service, or persistent state.
 
-The next backend change must compose an implementation at the application/CLI
-composition root against the published RAES backend protocol. That composition
-point is the extension seam. Do not pre-build a local abstract base class,
-backend registry, service locator, placeholder implementation, or generic
-plugin system. Backend-native values and exceptions stay behind that boundary;
+The APTL backend migration must compose at the application/CLI composition root
+against the published RAES backend protocol. That composition point is the
+extension seam. Do not pre-build a parallel abstract base class, backend
+registry, service locator, placeholder implementation, or generic plugin
+system. Backend-native values and exceptions stay behind that boundary;
 portable results pass through RAES-owned closed models and diagnostics.
 
 `SECURITY.md` and `SUPPORT.md` must name this boundary explicitly: the baseline
-does not execute a backend, while future backend execution is where untrusted
+does not execute a backend, while migrated backend execution is where untrusted
 input, host effects, credentials, process arguments, native logs, and error
 redaction become security-relevant.
 
@@ -114,8 +124,8 @@ root `noxfile.py` invoked through pinned `nox[uv]`; `make verify` and
 `.ground-control.yaml` are thin callers, not alternate test definitions. CI may
 run graph stages in parallel. A `pull_request_target` workflow loaded from the
 protected base branch validates PR metadata without checking out PR content,
-authenticates the exact Release Please route, and aggregates the named Verify
-and Sonar results into the required `PR Gate`.
+authenticates the exact Release Please route, and aggregates the named Python
+3.11 Verify, Python 3.12 Verify, and Sonar results into the required `PR Gate`.
 
 The graph must cover:
 
@@ -263,6 +273,8 @@ or workflow.
   make every service accept one raw string or to add a universal project DTO.
 - A successfully built skeleton is not a backend, and an import smoke is not a
   conformance or execution claim.
+- APTL is a migration source and advanced TechVault experience, not a third
+  backend or a checkout-relative runtime dependency.
 - A GitHub Release is not the same boundary as PyPI publication; neither should
   be used to smuggle out a placeholder backend.
 - A Release Please manifest is release state, not a second runtime version API;

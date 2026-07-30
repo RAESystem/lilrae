@@ -1,8 +1,8 @@
 # Contribute to LilRAE
 
-LilRAE is a small downstream RAES implementation. Changes should preserve the
-line between RAES-owned portable contracts and LilRAE-owned concrete backend
-behavior.
+LilRAE is the complete personal and local RAES backend. Changes should preserve
+the line between RAES-owned portable contracts and LilRAE-owned concrete
+backend behavior.
 
 ## Choose the right repository
 
@@ -10,6 +10,11 @@ Propose portable semantics, schemas, protocol changes, diagnostics, or
 conformance behavior in [RAES](https://github.com/RAESystem/rae). Propose
 concrete realization, readiness, host/runtime security, rollback, teardown, and
 backend-owned diagnostics here.
+
+The backend is being generalized and migrated from `Brad-Edwards/aptl`.
+Preserve useful history and behavior while keeping TechVault-specific packs,
+plugins, MCPs, and research apparatus outside the generic core. Do not create a
+parallel greenfield runtime for capability that should migrate.
 
 Open an issue before adding a public capability or changing the execution
 boundary. Keep unrelated work in separate pull requests.
@@ -51,7 +56,7 @@ override, or CI-specific exception.
 
 ## Coding standards
 
-- Support Python 3.12 and keep strict typing green.
+- Support Python 3.11 and 3.12 and keep strict typing green.
 - Prefer the standard library and existing RAES public contracts over new
   abstractions.
 - Keep functions focused and diagnostics deterministic.

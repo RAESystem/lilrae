@@ -106,6 +106,21 @@ def _workflow_findings(root: Path) -> list[Finding]:
             )
         )
 
+    verify_job = ci_jobs.get("verify", {}) if isinstance(ci_jobs, dict) else {}
+    strategy = verify_job.get("strategy", {}) if isinstance(verify_job, dict) else {}
+    matrix = strategy.get("matrix", {}) if isinstance(strategy, dict) else {}
+    python_versions = set(matrix.get("python-version", [])) if isinstance(matrix, dict) else set()
+    if verify_job.get(
+        "name"
+    ) != "Verify (Python ${{ matrix.python-version }})" or python_versions != {"3.11", "3.12"}:
+        findings.append(
+            Finding(
+                "WORKFLOW-PYTHON-MATRIX",
+                ".github/workflows/ci.yml",
+                "CI must verify the supported Python 3.11 and 3.12 versions",
+            )
+        )
+
     trusted_jobs = trusted_pr.get("jobs", {})
     trusted_job_names = (
         {job.get("name") for job in trusted_jobs.values() if isinstance(job, dict)}
@@ -117,7 +132,8 @@ def _workflow_findings(root: Path) -> list[Finding]:
         "actions/checkout@" not in trusted_text,
         "release-please--branches--main--components--lilrae" in trusted_text,
         'pr.user.login === "github-actions[bot]"' in trusted_text,
-        'const required = ["Verify", "Sonar"]' in trusted_text,
+        ('const required = ["Verify (Python 3.11)", "Verify (Python 3.12)", "Sonar"]')
+        in trusted_text,
     )
     if trusted_job_names != {"PR Gate", "PR title"} or not all(trusted_markers):
         findings.append(

@@ -152,7 +152,7 @@ def _build_smoke(session: nox.Session) -> None:
         "--output-file",
         str(runtime_requirements),
     )
-    _run(session, "uv", "venv", "--python", "3.12", str(environment))
+    _run(session, "uv", "venv", "--python", "3.11", str(environment))
     interpreter = (
         environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     ).absolute()

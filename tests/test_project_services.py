@@ -71,7 +71,12 @@ on:
 permissions:
   contents: read
 jobs:
-  verify: {runs-on: ubuntu-latest}
+  verify:
+    name: Verify (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
   sonar: {runs-on: ubuntu-latest}
 """,
         ".github/workflows/pr-metadata-policy.yml": """
@@ -90,7 +95,7 @@ jobs:
       - uses: actions/github-script@0123456789012345678901234567890123456789
         with:
           script: |
-            const required = ["Verify", "Sonar"];
+            const required = ["Verify (Python 3.11)", "Verify (Python 3.12)", "Sonar"];
             const release = "release-please--branches--main--components--lilrae";
             const author = pr.user.login === "github-actions[bot]";
   pr-title:
@@ -173,13 +178,30 @@ def test_required_aggregate_gate_is_structural(tmp_path: Path) -> None:
     trusted = root / ".github/workflows/pr-metadata-policy.yml"
     trusted.write_text(
         trusted.read_text(encoding="utf-8").replace(
-            '            const required = ["Verify", "Sonar"];\n',
+            (
+                '            const required = ["Verify (Python 3.11)", '
+                '"Verify (Python 3.12)", "Sonar"];\n'
+            ),
             "",
         ),
         encoding="utf-8",
     )
 
     assert "WORKFLOW-TRUSTED-PR-GATE" in _rule_ids(root)
+
+
+def test_supported_python_matrix_is_structural(tmp_path: Path) -> None:
+    root = _service_repository(tmp_path)
+    ci = root / ".github/workflows/ci.yml"
+    ci.write_text(
+        ci.read_text(encoding="utf-8").replace(
+            '        python-version: ["3.11", "3.12"]',
+            '        python-version: ["3.12"]',
+        ),
+        encoding="utf-8",
+    )
+
+    assert "WORKFLOW-PYTHON-MATRIX" in _rule_ids(root)
 
 
 def test_security_and_support_name_execution_boundary(tmp_path: Path) -> None:

@@ -43,7 +43,7 @@ jobs:
               return;
             }
 
-            const required = ["Verify", "Sonar"];
+            const required = ["Verify (Python 3.11)", "Verify (Python 3.12)", "Sonar"];
             const acceptable = new Set(["success", "neutral", "skipped"]);
             for (let attempt = 0; attempt < 60; attempt += 1) {
               const current = await github.rest.pulls.get({
@@ -87,7 +87,7 @@ jobs:
               }
               await new Promise((resolve) => setTimeout(resolve, 10000));
             }
-            core.setFailed("timed out waiting for Verify and Sonar");
+            core.setFailed("timed out waiting for Python 3.11, Python 3.12, and Sonar");
 
   pr-title:
     name: PR title
