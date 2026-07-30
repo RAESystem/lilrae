@@ -162,7 +162,6 @@ def _build_smoke(session: nox.Session) -> None:
         "uv",
         "pip",
         "install",
-        "--offline",
         "--python",
         str(interpreter),
         "--no-deps",
