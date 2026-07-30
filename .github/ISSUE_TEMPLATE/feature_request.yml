@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a bounded LilRAE capability.
+title: "feat: "
+body:
+  - type: textarea
+    attributes:
+      label: Outcome
+      description: Describe the user-visible result and why LilRAE should own it.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: RAES authority boundary
+      description: Identify the published RAES contracts or protocols this proposal consumes.
+    validations:
+      required: true

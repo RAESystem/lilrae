@@ -1,0 +1,35 @@
+schema_version = 1
+
+[identity]
+distribution = "lilrae"
+import_package = "lilrae"
+cli = "lilrae"
+github_repository = "RAESystem/lilrae"
+ground_control_project = "lilrae"
+release_tag_format = "vX.Y.Z"
+
+[raes]
+distribution = "raes"
+version = "3.0.0"
+public_imports = [
+  "raes_contracts",
+  "raes_backend_protocols",
+  "raes_conformance",
+]
+allowed_registries = ["https://pypi.org/simple"]
+
+[services.sonar]
+organization = "brad-edwards"
+project_key = "Brad-Edwards_lilrae"
+
+[scan]
+exclude = [
+  ".git/",
+  ".mypy_cache/",
+  ".pytest_cache/",
+  ".ruff_cache/",
+  ".venv/",
+  "build/",
+  "dist/",
+]
+forbidden_contract_roots = ["contracts/", "schemas/"]

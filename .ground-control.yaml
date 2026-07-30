@@ -1,0 +1,39 @@
+schema_version: 1
+project: lilrae
+github_repo: RAESystem/lilrae
+short_code: LILRAE
+
+workflow:
+  base_branch: dev
+  test_command: uv tool run --from 'nox[uv]==2026.4.10' nox -f noxfile.py -s tests
+  completion_command: make verify
+  lint_command: uv tool run --from 'nox[uv]==2026.4.10' nox -f noxfile.py -s lint
+  format_command: uv run --frozen ruff format .
+  policy_command: make policy
+  precommit_command: uv run --frozen pre-commit run --all-files
+  codex_review:
+    pre_push_cap: 1
+  test_quality_review:
+    pre_push_cap: 1
+
+sonarcloud:
+  project_key: Brad-Edwards_lilrae
+  organization: brad-edwards
+
+docs:
+  adr_dir: docs/adr/
+  architecture_overview: docs/architecture/ARCHITECTURE.md
+  coding_standards: CONTRIBUTING.md
+  workflow_reference: CONTRIBUTING.md
+
+example_paths:
+  source: src/
+  test: tests/
+
+requirements:
+  uid_examples:
+    - LILRAE-001
+    - LILRAE-002
+
+telemetry:
+  enabled: false
