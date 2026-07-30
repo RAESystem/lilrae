@@ -27,11 +27,12 @@ IGNORED_PREFIXES = (
 )
 IGNORED_FILES = {".env", ".mcp.json"}
 MERGE_MARKERS = ("<" * 7 + " ", "=" * 7 + "\n", ">" * 7 + " ")
+PRIVATE_KEY_BEGIN = "-----BEGIN "
 PRIVATE_KEY_MARKERS = (
-    "-----BEGIN " + "PRIVATE KEY-----",
-    "-----BEGIN " + "RSA PRIVATE KEY-----",
-    "-----BEGIN " + "EC PRIVATE KEY-----",
-    "-----BEGIN " + "OPENSSH PRIVATE KEY-----",
+    PRIVATE_KEY_BEGIN + "PRIVATE KEY-----",
+    PRIVATE_KEY_BEGIN + "RSA PRIVATE KEY-----",
+    PRIVATE_KEY_BEGIN + "EC PRIVATE KEY-----",
+    PRIVATE_KEY_BEGIN + "OPENSSH PRIVATE KEY-----",
 )
 
 
@@ -64,60 +65,65 @@ def _ignored(relative: str) -> bool:
     )
 
 
+def _text_findings(path: Path, relative: str, text: str) -> list[Finding]:
+    findings: list[Finding] = []
+    if text and not text.endswith("\n"):
+        findings.append(Finding("HYGIENE-EOF", relative, "text files must end with a newline"))
+    if any(line.endswith((" ", "\t")) for line in text.splitlines()):
+        findings.append(
+            Finding("HYGIENE-WHITESPACE", relative, "text files must not have trailing whitespace")
+        )
+    if any(marker in text for marker in MERGE_MARKERS):
+        findings.append(Finding("HYGIENE-MERGE", relative, "merge-conflict markers are forbidden"))
+    if any(marker in text for marker in PRIVATE_KEY_MARKERS):
+        findings.append(
+            Finding(
+                "HYGIENE-PRIVATE-KEY",
+                relative,
+                "private-key material is forbidden in repository files",
+            )
+        )
+    try:
+        if path.suffix == ".json":
+            json.loads(text)
+        elif path.suffix in {".yaml", ".yml"}:
+            yaml.safe_load(text)
+    except (json.JSONDecodeError, yaml.YAMLError):
+        findings.append(
+            Finding(
+                "HYGIENE-JSON" if path.suffix == ".json" else "HYGIENE-YAML",
+                relative,
+                "structured data must parse",
+            )
+        )
+    return findings
+
+
+def _file_findings(path: Path, relative: str) -> list[Finding]:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return [Finding("HYGIENE-READ", relative, "repository file must be readable")]
+
+    findings: list[Finding] = []
+    if len(data) > MAX_FILE_BYTES:
+        findings.append(Finding("HYGIENE-LARGE-FILE", relative, "repository file exceeds 500 KiB"))
+    if b"\0" in data:
+        return findings
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return findings
+    findings.extend(_text_findings(path, relative, text))
+    return findings
+
+
 def check_hygiene(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     for path in _repository_files(root):
         relative = relative_path(root, path)
-        if _ignored(relative):
-            continue
-        try:
-            data = path.read_bytes()
-        except OSError:
-            findings.append(Finding("HYGIENE-READ", relative, "repository file must be readable"))
-            continue
-        if len(data) > MAX_FILE_BYTES:
-            findings.append(
-                Finding("HYGIENE-LARGE-FILE", relative, "repository file exceeds 500 KiB")
-            )
-        if b"\0" in data:
-            continue
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        if text and not text.endswith("\n"):
-            findings.append(Finding("HYGIENE-EOF", relative, "text files must end with a newline"))
-        if any(line.endswith((" ", "\t")) for line in text.splitlines()):
-            findings.append(
-                Finding(
-                    "HYGIENE-WHITESPACE", relative, "text files must not have trailing whitespace"
-                )
-            )
-        if any(marker in text for marker in MERGE_MARKERS):
-            findings.append(
-                Finding("HYGIENE-MERGE", relative, "merge-conflict markers are forbidden")
-            )
-        if any(marker in text for marker in PRIVATE_KEY_MARKERS):
-            findings.append(
-                Finding(
-                    "HYGIENE-PRIVATE-KEY",
-                    relative,
-                    "private-key material is forbidden in repository files",
-                )
-            )
-        try:
-            if path.suffix == ".json":
-                json.loads(text)
-            elif path.suffix in {".yaml", ".yml"}:
-                yaml.safe_load(text)
-        except (json.JSONDecodeError, yaml.YAMLError):
-            findings.append(
-                Finding(
-                    "HYGIENE-JSON" if path.suffix == ".json" else "HYGIENE-YAML",
-                    relative,
-                    "structured data must parse",
-                )
-            )
+        if not _ignored(relative):
+            findings.extend(_file_findings(path, relative))
     return sorted(set(findings))
 
 

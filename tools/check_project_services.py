@@ -24,6 +24,10 @@ FORBIDDEN_PUBLICATION = (
     "twine upload",
     "uv publish",
 )
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
+TRUSTED_PR_WORKFLOW_PATH = ".github/workflows/pr-metadata-policy.yml"
+RELEASE_WORKFLOW_PATH = ".github/workflows/release-please.yml"
+BACKEND_EXECUTION_BOUNDARY = "backend execution boundary"
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -71,37 +75,32 @@ def _iter_uses(value: Any) -> Iterable[str]:
 
 
 def _is_sha_pinned(action: str) -> bool:
-    if action.startswith("./") or action.startswith("docker://"):
+    if action.startswith(("./", "docker://")):
         return True
     _separator, marker, reference = action.rpartition("@")
     return bool(marker and FULL_SHA.fullmatch(reference))
 
 
-def _workflow_findings(root: Path) -> list[Finding]:
-    findings: list[Finding] = []
-    ci_path = root / ".github/workflows/ci.yml"
-    trusted_pr_path = root / ".github/workflows/pr-metadata-policy.yml"
-    release_path = root / ".github/workflows/release-please.yml"
+def _load_workflows(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
     try:
-        ci = _load_yaml(ci_path)
-        trusted_pr = _load_yaml(trusted_pr_path)
-        release = _load_yaml(release_path)
+        return (
+            _load_yaml(root / CI_WORKFLOW_PATH),
+            _load_yaml(root / TRUSTED_PR_WORKFLOW_PATH),
+            _load_yaml(root / RELEASE_WORKFLOW_PATH),
+        )
     except (OSError, ValueError, yaml.YAMLError):
-        return [
-            Finding(
-                "WORKFLOW-SHAPE",
-                ".github/workflows",
-                "CI, trusted PR policy, and release workflows must be valid mappings",
-            )
-        ]
+        return None
 
+
+def _ci_workflow_findings(ci: dict[str, Any]) -> list[Finding]:
+    findings: list[Finding] = []
     ci_jobs = ci.get("jobs", {})
     required_jobs = {"verify", "sonar"}
     if not isinstance(ci_jobs, dict) or not required_jobs.issubset(ci_jobs):
         findings.append(
             Finding(
                 "WORKFLOW-REQUIRED-GATE",
-                ".github/workflows/ci.yml",
+                CI_WORKFLOW_PATH,
                 "CI must define verify and sonar jobs",
             )
         )
@@ -116,18 +115,22 @@ def _workflow_findings(root: Path) -> list[Finding]:
         findings.append(
             Finding(
                 "WORKFLOW-PYTHON-MATRIX",
-                ".github/workflows/ci.yml",
+                CI_WORKFLOW_PATH,
                 "CI must verify the supported Python 3.11 and 3.12 versions",
             )
         )
+    return findings
 
+
+def _trusted_workflow_findings(root: Path, trusted_pr: dict[str, Any]) -> list[Finding]:
+    findings: list[Finding] = []
     trusted_jobs = trusted_pr.get("jobs", {})
     trusted_job_names = (
         {job.get("name") for job in trusted_jobs.values() if isinstance(job, dict)}
         if isinstance(trusted_jobs, dict)
         else set()
     )
-    trusted_text = trusted_pr_path.read_text(encoding="utf-8")
+    trusted_text = (root / TRUSTED_PR_WORKFLOW_PATH).read_text(encoding="utf-8")
     trusted_markers = (
         "actions/checkout@" not in trusted_text,
         "release-please--branches--main--components--lilrae" in trusted_text,
@@ -139,18 +142,26 @@ def _workflow_findings(root: Path) -> list[Finding]:
         findings.append(
             Finding(
                 "WORKFLOW-TRUSTED-PR-GATE",
-                ".github/workflows/pr-metadata-policy.yml",
+                TRUSTED_PR_WORKFLOW_PATH,
                 "PR metadata and aggregate checks must run from trusted base-branch code",
             )
         )
+    return findings
 
+
+def _route_findings(
+    ci: dict[str, Any],
+    trusted_pr: dict[str, Any],
+    release: dict[str, Any],
+) -> list[Finding]:
+    findings: list[Finding] = []
     pull_request = ci.get("on", {}).get("pull_request", {})
     branches = set(pull_request.get("branches", [])) if isinstance(pull_request, dict) else set()
     if branches != {"dev", "main"}:
         findings.append(
             Finding(
                 "WORKFLOW-PR-TARGETS",
-                ".github/workflows/ci.yml",
+                CI_WORKFLOW_PATH,
                 "CI pull-request targets must be exactly dev and main",
             )
         )
@@ -165,7 +176,7 @@ def _workflow_findings(root: Path) -> list[Finding]:
         findings.append(
             Finding(
                 "WORKFLOW-PR-TARGETS",
-                ".github/workflows/pr-metadata-policy.yml",
+                TRUSTED_PR_WORKFLOW_PATH,
                 "trusted PR policy targets must be exactly dev and main",
             )
         )
@@ -178,38 +189,72 @@ def _workflow_findings(root: Path) -> list[Finding]:
         findings.append(
             Finding(
                 "RELEASE-BRANCH",
-                ".github/workflows/release-please.yml",
+                RELEASE_WORKFLOW_PATH,
                 "Release Please must run only after main changes",
             )
         )
-    release_text = release_path.read_text(encoding="utf-8").lower()
+    return findings
+
+
+def _release_findings(root: Path, release: dict[str, Any]) -> list[Finding]:
+    release_text = (root / RELEASE_WORKFLOW_PATH).read_text(encoding="utf-8").lower()
     if any(token in release_text for token in FORBIDDEN_PUBLICATION) or "publish" in release.get(
         "jobs", {}
     ):
-        findings.append(
+        return [
             Finding(
                 "RELEASE-PUBLICATION",
-                ".github/workflows/release-please.yml",
+                RELEASE_WORKFLOW_PATH,
                 "the backend-empty baseline must not publish a package",
             )
-        )
+        ]
+    return []
 
-    for path, workflow in (
-        (ci_path, ci),
-        (trusted_pr_path, trusted_pr),
-        (release_path, release),
-    ):
+
+def _action_pin_findings(
+    workflows: tuple[tuple[str, dict[str, Any]], ...],
+) -> list[Finding]:
+    findings: list[Finding] = []
+    for path, workflow in workflows:
         findings.extend(
             [
                 Finding(
                     "WORKFLOW-ACTION-PIN",
-                    path.relative_to(root).as_posix(),
+                    path,
                     "third-party actions must use a full commit SHA",
                 )
                 for action in _iter_uses(workflow)
                 if not _is_sha_pinned(action)
             ]
         )
+    return findings
+
+
+def _workflow_findings(root: Path) -> list[Finding]:
+    loaded = _load_workflows(root)
+    if loaded is None:
+        return [
+            Finding(
+                "WORKFLOW-SHAPE",
+                ".github/workflows",
+                "CI, trusted PR policy, and release workflows must be valid mappings",
+            )
+        ]
+
+    ci, trusted_pr, release = loaded
+    findings = _ci_workflow_findings(ci)
+    findings.extend(_trusted_workflow_findings(root, trusted_pr))
+    findings.extend(_route_findings(ci, trusted_pr, release))
+    findings.extend(_release_findings(root, release))
+    findings.extend(
+        _action_pin_findings(
+            (
+                (CI_WORKFLOW_PATH, ci),
+                (TRUSTED_PR_WORKFLOW_PATH, trusted_pr),
+                (RELEASE_WORKFLOW_PATH, release),
+            )
+        )
+    )
     return findings
 
 
@@ -224,7 +269,7 @@ def _identity_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
         release = _load_json(root / "release-please-config.json")
         manifest = _load_json(root / ".release-please-manifest.json")
         version_text = (root / "src/lilrae/_version.py").read_text(encoding="utf-8")
-    except (KeyError, OSError, ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError):
+    except (KeyError, OSError, ValueError):
         return [
             Finding(
                 "SERVICE-SHAPE",
@@ -281,9 +326,9 @@ def _identity_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
 
 def _documentation_findings(root: Path) -> list[Finding]:
     required = {
-        "README.md": {"authority boundary", "backend execution boundary"},
-        "SECURITY.md": {"backend execution boundary"},
-        "SUPPORT.md": {"backend execution boundary"},
+        "README.md": {"authority boundary", BACKEND_EXECUTION_BOUNDARY},
+        "SECURITY.md": {BACKEND_EXECUTION_BOUNDARY},
+        "SUPPORT.md": {BACKEND_EXECUTION_BOUNDARY},
     }
     findings: list[Finding] = []
     for relative, headings in required.items():
@@ -312,7 +357,7 @@ def check_project_services(root: Path) -> list[Finding]:
         policy = load_repository_policy(root)
         policy["identity"]
         policy["services"]["sonar"]
-    except (KeyError, OSError, TypeError, ValueError, tomllib.TOMLDecodeError):
+    except (KeyError, OSError, TypeError, ValueError):
         return [
             Finding(
                 "SERVICE-POLICY-SHAPE",

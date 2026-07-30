@@ -17,8 +17,8 @@ workflow:
     pre_push_cap: 1
 
 sonarcloud:
-  project_key: RAESystem_lilrae
-  organization: raesystem
+  project_key: Brad-Edwards_lilrae
+  organization: brad-edwards
 
 docs:
   adr_dir: docs/adr/

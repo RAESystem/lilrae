@@ -17,14 +17,16 @@ from .policy_common import Finding, load_repository_policy, relative_path
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENT_NAME = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
+PYTHONPATH_ASSIGNMENT = re.compile(r"PYTHONPATH\s*:", re.IGNORECASE)
 CONFIG_SOURCE_PATTERNS = (
-    re.compile(r"PYTHONPATH\s*:\s*[\"']?[^#\n]*rae", re.IGNORECASE),
     re.compile(r"(?:^|[\"'\s])\.\./rae(?:/|[\"'\s]|$)", re.IGNORECASE),
     re.compile(r"implementations/python", re.IGNORECASE),
     re.compile(r"packages/raes[_/-]", re.IGNORECASE),
     re.compile(r"git\+https?://[^\s\"']*/rae(?:\.git)?", re.IGNORECASE),
 )
 CONFIG_SUFFIXES = {".bash", ".sh", ".yaml", ".yml"}
+PYPROJECT_PATH = "pyproject.toml"
+UV_LOCK_PATH = "uv.lock"
 
 
 def _repository_files(root: Path) -> list[Path]:
@@ -205,13 +207,13 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
     distribution = _normalise_distribution(str(raes["distribution"]))
     expected = f"{distribution}=={raes['version']}"
     try:
-        with (root / "pyproject.toml").open("rb") as handle:
+        with (root / PYPROJECT_PATH).open("rb") as handle:
             project_file = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
         return [
             Finding(
                 "RAES-MANIFEST-SHAPE",
-                "pyproject.toml",
+                PYPROJECT_PATH,
                 "project metadata must be valid TOML",
             )
         ]
@@ -235,7 +237,7 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
         findings.append(
             Finding(
                 "RAES-DEPENDENCY-SOURCE" if source_shape else "RAES-DEPENDENCY-PIN",
-                "pyproject.toml",
+                PYPROJECT_PATH,
                 "RAES must appear once as the exact released registry dependency",
             )
         )
@@ -245,17 +247,17 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
         findings.append(
             Finding(
                 "RAES-DEPENDENCY-SOURCE",
-                "pyproject.toml",
+                PYPROJECT_PATH,
                 "RAES source overrides are forbidden",
             )
         )
 
     try:
-        with (root / "uv.lock").open("rb") as handle:
+        with (root / UV_LOCK_PATH).open("rb") as handle:
             lock = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError):
         findings.append(
-            Finding("RAES-LOCK-SHAPE", "uv.lock", "resolver lock data must be valid TOML")
+            Finding("RAES-LOCK-SHAPE", UV_LOCK_PATH, "resolver lock data must be valid TOML")
         )
         return findings
 
@@ -269,7 +271,7 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
         findings.append(
             Finding(
                 "RAES-LOCK-PIN",
-                "uv.lock",
+                UV_LOCK_PATH,
                 "the lock must contain exactly the declared RAES release",
             )
         )
@@ -281,11 +283,19 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
         findings.append(
             Finding(
                 "RAES-LOCK-SOURCE",
-                "uv.lock",
+                UV_LOCK_PATH,
                 "the locked RAES artifact must come from an approved registry",
             )
         )
     return findings
+
+
+def _has_raes_pythonpath(content: str) -> bool:
+    for line in content.splitlines():
+        code = line.partition("#")[0]
+        if PYTHONPATH_ASSIGNMENT.search(code) and "rae" in code.casefold():
+            return True
+    return False
 
 
 def _configuration_findings(
@@ -301,7 +311,9 @@ def _configuration_findings(
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
             continue
-        if any(pattern.search(content) for pattern in CONFIG_SOURCE_PATTERNS):
+        if _has_raes_pythonpath(content) or any(
+            pattern.search(content) for pattern in CONFIG_SOURCE_PATTERNS
+        ):
             findings.append(
                 Finding(
                     "RAES-CONFIG-SOURCE",
@@ -339,7 +351,7 @@ def check_repository(root: Path) -> list[Finding]:
         exclusions = tuple(map(str, scan["exclude"]))
         public_imports = set(map(str, policy["raes"]["public_imports"]))
         forbidden_roots = tuple(map(str, scan["forbidden_contract_roots"]))
-    except (KeyError, OSError, TypeError, ValueError, tomllib.TOMLDecodeError):
+    except (KeyError, OSError, TypeError, ValueError):
         return [
             Finding(
                 "RAES-POLICY-SHAPE",
