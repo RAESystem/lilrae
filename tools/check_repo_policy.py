@@ -34,7 +34,7 @@ def _repository_files(root: Path) -> list[Path]:
     git = shutil.which("git")
     if git is None:
         return [path for path in root.rglob("*") if path.is_file()]
-    result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+    result = subprocess.run(
         [git, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         cwd=root,
         check=False,
@@ -51,10 +51,12 @@ def _repository_files(root: Path) -> list[Path]:
 
 
 def _normalise_distribution(name: str) -> str:
+    """Normalize a distribution name using Python packaging rules."""
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def _dotted_name(node: ast.AST) -> str | None:
+    """Resolve a dotted attribute expression when it contains names only."""
     parts: list[str] = []
     current = node
     while isinstance(current, ast.Attribute):
@@ -67,10 +69,13 @@ def _dotted_name(node: ast.AST) -> str | None:
 
 
 def _constant_string(node: ast.AST) -> str | None:
+    """Return a literal string AST value."""
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
 
 class _ImportVisitor(ast.NodeVisitor):
+    """Find forbidden RAES imports and source-loading behavior."""
+
     def __init__(self, path: str, public_imports: set[str]) -> None:
         self.path = path
         self.public_imports = public_imports
@@ -169,6 +174,7 @@ class _ImportVisitor(ast.NodeVisitor):
 
 
 def _is_excluded(relative: str, exclusions: tuple[str, ...]) -> bool:
+    """Return whether a repository-relative path matches a policy exclusion."""
     return any(
         relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in exclusions
     )
@@ -179,6 +185,7 @@ def _python_findings(
     public_imports: set[str],
     exclusions: tuple[str, ...],
 ) -> list[Finding]:
+    """Inspect Python syntax and import behavior."""
     findings: list[Finding] = []
     for path in sorted(
         candidate for candidate in _repository_files(root) if candidate.suffix == ".py"
@@ -201,23 +208,13 @@ def _python_findings(
     return findings
 
 
-def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
+def _project_dependency_findings(
+    project_file: dict[str, Any],
+    distribution: str,
+    expected: str,
+) -> list[Finding]:
+    """Validate the project manifest's single released RAES dependency."""
     findings: list[Finding] = []
-    raes = policy["raes"]
-    distribution = _normalise_distribution(str(raes["distribution"]))
-    expected = f"{distribution}=={raes['version']}"
-    try:
-        with (root / PYPROJECT_PATH).open("rb") as handle:
-            project_file = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError):
-        return [
-            Finding(
-                "RAES-MANIFEST-SHAPE",
-                PYPROJECT_PATH,
-                "project metadata must be valid TOML",
-            )
-        ]
-
     requirements: list[str] = []
     project = project_file.get("project", {})
     requirements.extend(str(item) for item in project.get("dependencies", []))
@@ -251,7 +248,16 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
                 "RAES source overrides are forbidden",
             )
         )
+    return findings
 
+
+def _lock_dependency_findings(
+    root: Path,
+    raes: dict[str, Any],
+    distribution: str,
+) -> list[Finding]:
+    """Validate the locked RAES version and registry source."""
+    findings: list[Finding] = []
     try:
         with (root / UV_LOCK_PATH).open("rb") as handle:
             lock = tomllib.load(handle)
@@ -290,7 +296,30 @@ def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
     return findings
 
 
+def _dependency_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
+    """Return manifest and lock findings for the released RAES dependency."""
+    raes = policy["raes"]
+    distribution = _normalise_distribution(str(raes["distribution"]))
+    expected = f"{distribution}=={raes['version']}"
+    try:
+        with (root / PYPROJECT_PATH).open("rb") as handle:
+            project_file = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return [
+            Finding(
+                "RAES-MANIFEST-SHAPE",
+                PYPROJECT_PATH,
+                "project metadata must be valid TOML",
+            )
+        ]
+
+    findings = _project_dependency_findings(project_file, distribution, expected)
+    findings.extend(_lock_dependency_findings(root, raes, distribution))
+    return findings
+
+
 def _has_raes_pythonpath(content: str) -> bool:
+    """Return whether executable configuration assigns RAES to PYTHONPATH."""
     for line in content.splitlines():
         code = line.partition("#")[0]
         if PYTHONPATH_ASSIGNMENT.search(code) and "rae" in code.casefold():
@@ -302,6 +331,7 @@ def _configuration_findings(
     root: Path,
     exclusions: tuple[str, ...],
 ) -> list[Finding]:
+    """Inspect executable configuration for checkout-relative RAES sources."""
     findings: list[Finding] = []
     for path in sorted(_repository_files(root)):
         relative = relative_path(root, path)
@@ -329,6 +359,7 @@ def _contract_copy_findings(
     forbidden_roots: tuple[str, ...],
     exclusions: tuple[str, ...],
 ) -> list[Finding]:
+    """Reject copied portable RAES contract trees."""
     for path in sorted(_repository_files(root)):
         relative = relative_path(root, path)
         if _is_excluded(relative, exclusions):
@@ -345,6 +376,7 @@ def _contract_copy_findings(
 
 
 def check_repository(root: Path) -> list[Finding]:
+    """Return all released-dependency and authority-boundary findings."""
     try:
         policy = load_repository_policy(root)
         scan = policy["scan"]
@@ -368,6 +400,7 @@ def check_repository(root: Path) -> list[Finding]:
 
 
 def main() -> int:
+    """Run repository policy checks for the current checkout."""
     findings = check_repository(ROOT)
     if findings:
         print("repository policy: FAIL", file=sys.stderr)

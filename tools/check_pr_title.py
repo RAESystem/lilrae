@@ -17,6 +17,7 @@ ATTRIBUTION = re.compile(
 
 
 def validate_title(title: str) -> str | None:
+    """Return a validation error for a non-conforming pull-request title."""
     if ATTRIBUTION.search(title):
         return "pull-request titles must not contain tool or generated-by attribution"
     if not TITLE.fullmatch(title):
@@ -25,6 +26,7 @@ def validate_title(title: str) -> str | None:
 
 
 def main() -> int:
+    """Validate a pull-request title supplied on the command line."""
     parser = argparse.ArgumentParser()
     parser.add_argument("title")
     args = parser.parse_args()

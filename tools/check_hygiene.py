@@ -37,11 +37,12 @@ PRIVATE_KEY_MARKERS = (
 
 
 def _repository_files(root: Path) -> list[Path]:
+    """Return version-controlled and unignored repository files."""
     if (root / ".git").exists():
         git = shutil.which("git")
         if git is None:
             return []
-        result = subprocess.run(  # noqa: S603 - resolved git binary and fixed arguments
+        result = subprocess.run(
             [
                 git,
                 "ls-files",
@@ -60,12 +61,14 @@ def _repository_files(root: Path) -> list[Path]:
 
 
 def _ignored(relative: str) -> bool:
+    """Return whether a repository-relative path is excluded from hygiene checks."""
     return relative in IGNORED_FILES or any(
         relative.startswith(prefix) for prefix in IGNORED_PREFIXES
     )
 
 
 def _text_findings(path: Path, relative: str, text: str) -> list[Finding]:
+    """Inspect decoded text and structured-data syntax."""
     findings: list[Finding] = []
     if text and not text.endswith("\n"):
         findings.append(Finding("HYGIENE-EOF", relative, "text files must end with a newline"))
@@ -100,6 +103,7 @@ def _text_findings(path: Path, relative: str, text: str) -> list[Finding]:
 
 
 def _file_findings(path: Path, relative: str) -> list[Finding]:
+    """Inspect one readable repository file without exposing its contents."""
     try:
         data = path.read_bytes()
     except OSError:
@@ -108,17 +112,18 @@ def _file_findings(path: Path, relative: str) -> list[Finding]:
     findings: list[Finding] = []
     if len(data) > MAX_FILE_BYTES:
         findings.append(Finding("HYGIENE-LARGE-FILE", relative, "repository file exceeds 500 KiB"))
-    if b"\0" in data:
-        return findings
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        return findings
-    findings.extend(_text_findings(path, relative, text))
+    if b"\0" not in data:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = None
+        if text is not None:
+            findings.extend(_text_findings(path, relative, text))
     return findings
 
 
 def check_hygiene(root: Path) -> list[Finding]:
+    """Return all deterministic repository hygiene findings."""
     findings: list[Finding] = []
     for path in _repository_files(root):
         relative = relative_path(root, path)
@@ -128,6 +133,7 @@ def check_hygiene(root: Path) -> list[Finding]:
 
 
 def main() -> int:
+    """Run repository hygiene checks for the current checkout."""
     findings = check_hygiene(ROOT)
     if findings:
         print("repository hygiene: FAIL", file=sys.stderr)

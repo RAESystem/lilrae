@@ -31,12 +31,14 @@ BACKEND_EXECUTION_BOUNDARY = "backend execution boundary"
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
+    """Load a TOML mapping from a required repository file."""
     with path.open("rb") as handle:
         data: dict[str, Any] = tomllib.load(handle)
     return data
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    """Load a JSON object from a required repository file."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{path.name} must contain an object")
@@ -44,6 +46,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    """Load a YAML mapping while normalizing YAML 1.1's boolean `on` key."""
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{path.name} must contain a mapping")
@@ -53,6 +56,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _properties(path: Path) -> dict[str, str]:
+    """Load simple key-value properties."""
     values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -63,7 +67,8 @@ def _properties(path: Path) -> dict[str, str]:
     return values
 
 
-def _iter_uses(value: Any) -> Iterable[str]:
+def _iter_uses(value: object) -> Iterable[str]:
+    """Yield every GitHub Actions `uses` reference from nested workflow data."""
     if isinstance(value, Mapping):
         for key, item in value.items():
             if key == "uses" and isinstance(item, str):
@@ -75,6 +80,7 @@ def _iter_uses(value: Any) -> Iterable[str]:
 
 
 def _is_sha_pinned(action: str) -> bool:
+    """Return whether an action reference is local, containerized, or SHA-pinned."""
     if action.startswith(("./", "docker://")):
         return True
     _separator, marker, reference = action.rpartition("@")
@@ -82,6 +88,7 @@ def _is_sha_pinned(action: str) -> bool:
 
 
 def _load_workflows(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """Load all governed workflows, returning none when any shape is invalid."""
     try:
         return (
             _load_yaml(root / CI_WORKFLOW_PATH),
@@ -93,6 +100,7 @@ def _load_workflows(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[st
 
 
 def _ci_workflow_findings(ci: dict[str, Any]) -> list[Finding]:
+    """Check canonical CI jobs and the supported Python matrix."""
     findings: list[Finding] = []
     ci_jobs = ci.get("jobs", {})
     required_jobs = {"verify", "sonar"}
@@ -123,6 +131,7 @@ def _ci_workflow_findings(ci: dict[str, Any]) -> list[Finding]:
 
 
 def _trusted_workflow_findings(root: Path, trusted_pr: dict[str, Any]) -> list[Finding]:
+    """Check trusted pull-request policy jobs and required markers."""
     findings: list[Finding] = []
     trusted_jobs = trusted_pr.get("jobs", {})
     trusted_job_names = (
@@ -154,6 +163,7 @@ def _route_findings(
     trusted_pr: dict[str, Any],
     release: dict[str, Any],
 ) -> list[Finding]:
+    """Check pull-request and release branch routes."""
     findings: list[Finding] = []
     pull_request = ci.get("on", {}).get("pull_request", {})
     branches = set(pull_request.get("branches", [])) if isinstance(pull_request, dict) else set()
@@ -197,6 +207,7 @@ def _route_findings(
 
 
 def _release_findings(root: Path, release: dict[str, Any]) -> list[Finding]:
+    """Reject package publication while the backend remains empty."""
     release_text = (root / RELEASE_WORKFLOW_PATH).read_text(encoding="utf-8").lower()
     if any(token in release_text for token in FORBIDDEN_PUBLICATION) or "publish" in release.get(
         "jobs", {}
@@ -214,6 +225,7 @@ def _release_findings(root: Path, release: dict[str, Any]) -> list[Finding]:
 def _action_pin_findings(
     workflows: tuple[tuple[str, dict[str, Any]], ...],
 ) -> list[Finding]:
+    """Return findings for third-party actions that lack immutable SHA pins."""
     findings: list[Finding] = []
     for path, workflow in workflows:
         findings.extend(
@@ -231,6 +243,7 @@ def _action_pin_findings(
 
 
 def _workflow_findings(root: Path) -> list[Finding]:
+    """Return workflow shape, route, trust, and pinning findings."""
     loaded = _load_workflows(root)
     if loaded is None:
         return [
@@ -259,6 +272,7 @@ def _workflow_findings(root: Path) -> list[Finding]:
 
 
 def _identity_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
+    """Check package and external-service identity consistency."""
     findings: list[Finding] = []
     identity = policy["identity"]
     sonar_identity = policy["services"]["sonar"]
@@ -325,6 +339,7 @@ def _identity_findings(root: Path, policy: dict[str, Any]) -> list[Finding]:
 
 
 def _documentation_findings(root: Path) -> list[Finding]:
+    """Check that public documentation preserves security authority boundaries."""
     required = {
         "README.md": {"authority boundary", BACKEND_EXECUTION_BOUNDARY},
         "SECURITY.md": {BACKEND_EXECUTION_BOUNDARY},
@@ -353,6 +368,7 @@ def _documentation_findings(root: Path) -> list[Finding]:
 
 
 def check_project_services(root: Path) -> list[Finding]:
+    """Return cross-service identity and workflow findings."""
     try:
         policy = load_repository_policy(root)
         policy["identity"]
@@ -372,6 +388,7 @@ def check_project_services(root: Path) -> list[Finding]:
 
 
 def main() -> int:
+    """Run project-service policy checks for the current checkout."""
     findings = check_project_services(ROOT)
     if findings:
         print("project services: FAIL", file=sys.stderr)

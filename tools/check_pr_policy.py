@@ -16,20 +16,23 @@ def validate_pr_route(
     same_repository: bool,
     author: str,
 ) -> list[str]:
+    """Return validation errors for a proposed pull-request route."""
+    error: str | None = None
     if base == "dev":
-        return []
-    if base != "main":
-        return [f"pull requests must target dev or main, not {base!r}"]
-    if not same_repository:
-        return ["promotion and release pull requests must originate in RAESystem/lilrae"]
-    if head == "dev":
-        return []
-    if head == RELEASE_PLEASE_BRANCH and author == RELEASE_PLEASE_AUTHOR:
-        return []
-    return ["main accepts only dev promotion or the reviewed Release Please branch"]
+        pass
+    elif base != "main":
+        error = f"pull requests must target dev or main, not {base!r}"
+    elif not same_repository:
+        error = "promotion and release pull requests must originate in RAESystem/lilrae"
+    elif head == "dev":
+        pass
+    elif head != RELEASE_PLEASE_BRANCH or author != RELEASE_PLEASE_AUTHOR:
+        error = "main accepts only dev promotion or the reviewed Release Please branch"
+    return [error] if error else []
 
 
 def main() -> int:
+    """Validate pull-request route arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
