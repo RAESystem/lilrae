@@ -1,0 +1,105 @@
+name: PR metadata policy
+
+on:
+  pull_request_target:
+    branches: [dev, main]
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  checks: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-policy:
+    name: PR Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate the trusted pull-request route and required checks
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed("pull_request_target metadata is required");
+              return;
+            }
+
+            const sameRepository = pr.head.repo.full_name === pr.base.repo.full_name;
+            const isDevRoute = pr.base.ref === "dev";
+            const isPromotion =
+              pr.base.ref === "main" && sameRepository && pr.head.ref === "dev";
+            const isRelease =
+              pr.base.ref === "main"
+              && sameRepository
+              && pr.head.ref === "release-please--branches--main--components--lilrae"
+              && pr.user.login === "github-actions[bot]";
+
+            if (!(isDevRoute || isPromotion || isRelease)) {
+              core.setFailed(
+                "pull requests must target dev, or be an authenticated dev/release promotion to main"
+              );
+              return;
+            }
+
+            const required = ["Verify", "Sonar"];
+            const acceptable = new Set(["success", "neutral", "skipped"]);
+            for (let attempt = 0; attempt < 60; attempt += 1) {
+              const current = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              });
+              const refs = [pr.head.sha, current.data.merge_commit_sha].filter(Boolean);
+              const runs = [];
+              for (const ref of new Set(refs)) {
+                const response = await github.rest.checks.listForRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref,
+                  per_page: 100,
+                });
+                runs.push(...response.data.check_runs);
+              }
+
+              const conclusions = new Map();
+              for (const name of required) {
+                const candidates = runs
+                  .filter((run) => run.name === name && run.app?.slug === "github-actions")
+                  .sort((left, right) => right.id - left.id);
+                const completed = candidates.find((run) => run.status === "completed");
+                if (completed) {
+                  conclusions.set(name, completed.conclusion);
+                }
+              }
+
+              const failed = required.find(
+                (name) =>
+                  conclusions.has(name) && !acceptable.has(conclusions.get(name))
+              );
+              if (failed) {
+                core.setFailed(`${failed} concluded ${conclusions.get(failed)}`);
+                return;
+              }
+              if (required.every((name) => acceptable.has(conclusions.get(name)))) {
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 10000));
+            }
+            core.setFailed("timed out waiting for Verify and Sonar");
+
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate the Conventional Commit title from trusted metadata
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const title = context.payload.pull_request?.title ?? "";
+            const conventional =
+              /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: [^\s].+$/;
+            if (!conventional.test(title) || title.length > 100) {
+              core.setFailed("title must be a Conventional Commit subject of at most 100 characters");
+            }

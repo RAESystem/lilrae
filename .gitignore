@@ -1,0 +1,23 @@
+# Local credentials and agent configuration
+.env
+.mcp.json
+.codex/
+
+# Python
+__pycache__/
+*.py[cod]
+.coverage
+coverage.xml
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Tool state
+.nox/
+.uv-cache/
