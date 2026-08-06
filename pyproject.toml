@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Typing :: Typed",
 ]
-dependencies = ["raes==3.0.0"]
+dependencies = ["raes==3.3.0"]
 
 [project.scripts]
 lilrae = "lilrae.cli:main"
