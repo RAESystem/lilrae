@@ -25,7 +25,11 @@ def _run(session: nox.Session, *args: str, env: dict[str, str] | None = None) ->
 
 
 def _uv(session: nox.Session, *args: str) -> None:
-    _run(session, "uv", "run", "--frozen", *args)
+    command = ["uv", "run", "--frozen"]
+    selected_python = os.environ.get("UV_PYTHON")
+    if selected_python is not None:
+        command.extend(("--python", selected_python))
+    _run(session, *command, *args)
 
 
 def _hygiene(session: nox.Session) -> None:
@@ -84,6 +88,9 @@ def _build_smoke(session: nox.Session) -> None:
     source_dist.mkdir()
     wheel_dist.mkdir()
     expected_version = _canonical_version()
+    selected_python = os.environ.get(
+        "UV_PYTHON", f"{sys.version_info.major}.{sys.version_info.minor}"
+    )
 
     _uv(session, "python", "-c", "import hatchling")
     _run(
@@ -152,7 +159,7 @@ def _build_smoke(session: nox.Session) -> None:
         "--output-file",
         str(runtime_requirements),
     )
-    _run(session, "uv", "venv", "--python", "3.11", str(environment))
+    _run(session, "uv", "venv", "--python", selected_python, str(environment))
     interpreter = (
         environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     ).absolute()
@@ -184,6 +191,7 @@ def _build_smoke(session: nox.Session) -> None:
     clean_environment.pop("PYTHONPATH", None)
     clean_environment["PYTHONSAFEPATH"] = "1"
     clean_environment["EXPECTED_LILRAE_VERSION"] = expected_version
+    clean_environment["EXPECTED_PYTHON"] = selected_python
     with session.chdir(temporary):
         _run(
             session,
@@ -191,9 +199,11 @@ def _build_smoke(session: nox.Session) -> None:
             "-I",
             "-c",
             (
-                "import importlib.metadata as metadata, os; import lilrae; "
+                "import importlib.metadata as metadata, os, sys; import lilrae; "
                 "assert metadata.version('lilrae') == lilrae.__version__ "
-                "== os.environ['EXPECTED_LILRAE_VERSION']"
+                "== os.environ['EXPECTED_LILRAE_VERSION']; "
+                "assert sys.version_info[:2] == tuple(int(part) for part in "
+                "os.environ['EXPECTED_PYTHON'].split('.'))"
             ),
             env=clean_environment,
         )
