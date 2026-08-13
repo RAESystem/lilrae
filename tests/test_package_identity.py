@@ -18,7 +18,7 @@ def test_public_package_and_cli_have_one_identity() -> None:
 
     assert project["name"] == "lilrae"
     assert project["scripts"] == {"lilrae": "lilrae.cli:main"}
-    assert project["dependencies"] == ["raes==3.0.0"]
+    assert project["dependencies"] == ["raes==3.3.0"]
     assert project["requires-python"] == ">=3.11"
     assert "Programming Language :: Python :: 3.11" in project["classifiers"]
     assert "Programming Language :: Python :: 3.12" in project["classifiers"]

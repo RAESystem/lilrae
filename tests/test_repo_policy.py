@@ -21,7 +21,7 @@ release_tag_format = "vX.Y.Z"
 
 [raes]
 distribution = "raes"
-version = "3.0.0"
+version = "3.3.0"
 public_imports = [
   "raes_contracts",
   "raes_backend_protocols",
@@ -42,7 +42,7 @@ PYPROJECT = """
 [project]
 name = "lilrae"
 version = "0.0.0"
-dependencies = ["raes==3.0.0"]
+dependencies = ["raes==3.3.0"]
 """
 
 LOCK = """
@@ -51,7 +51,7 @@ revision = 3
 
 [[package]]
 name = "raes"
-version = "3.0.0"
+version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
 """
 
@@ -136,7 +136,7 @@ def test_raes_source_overrides_fail(tmp_path: Path, override: str) -> None:
 def test_plain_raes_version_mismatch_fails(tmp_path: Path) -> None:
     root = _repository(tmp_path)
     (root / "pyproject.toml").write_text(
-        PYPROJECT.replace("raes==3.0.0", "raes==2.0.0"),
+        PYPROJECT.replace("raes==3.3.0", "raes==2.0.0"),
         encoding="utf-8",
     )
 
@@ -183,7 +183,7 @@ def test_non_registry_lock_source_fails(tmp_path: Path) -> None:
 def test_wrong_raes_lock_version_fails(tmp_path: Path) -> None:
     root = _repository(tmp_path)
     (root / "uv.lock").write_text(
-        LOCK.replace('version = "3.0.0"', 'version = "2.0.0"'),
+        LOCK.replace('version = "3.3.0"', 'version = "2.0.0"'),
         encoding="utf-8",
     )
 
