@@ -25,6 +25,18 @@ def test_public_package_and_cli_have_one_identity() -> None:
     assert __version__
 
 
+def test_wheel_smoke_uses_and_proves_the_selected_matrix_interpreter() -> None:
+    noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+
+    assert "selected_python = os.environ.get(" in noxfile
+    assert '"UV_PYTHON"' in noxfile
+    assert 'command.extend(("--python", selected_python))' in noxfile
+    assert '"uv", "venv", "--python", selected_python' in noxfile
+    assert 'clean_environment["EXPECTED_PYTHON"] = selected_python' in noxfile
+    assert "assert sys.version_info[:2] == tuple(int(part) for part in " in noxfile
+    assert '"uv", "venv", "--python", "3.11"' not in noxfile
+
+
 def test_cli_reports_the_distribution_version_without_backend_claims() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "lilrae.cli", "--version"],
