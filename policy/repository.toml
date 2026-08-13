@@ -10,7 +10,7 @@ release_tag_format = "vX.Y.Z"
 
 [raes]
 distribution = "raes"
-version = "3.0.0"
+version = "3.3.0"
 public_imports = [
   "raes_contracts",
   "raes_backend_protocols",
